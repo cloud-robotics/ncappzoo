@@ -89,7 +89,7 @@ def deepnn(x):
   # Dropout - controls the complexity of the model, prevents co-adaptation of
   # features.
   with tf.name_scope('dropout'):
-    keep_prob = tf.placeholder(tf.float32)
+    keep_prob = tf.placeholder_with_default(1.0, shape=())
     h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
 
   # Map the 1024 features to 10 classes, one for each digit
@@ -128,7 +128,7 @@ def main(_):
   # Import data
   mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=True)
 
-  # Create the model
+  # Create the input layers, and name it 'input'
   x = tf.placeholder(tf.float32, [None, 784], name="input")
 
   # Define loss and optimizer
@@ -136,6 +136,9 @@ def main(_):
 
   # Build the graph for the deep net
   y_conv, keep_prob = deepnn(x)
+
+  # Add a softmax layer, and name it 'output'
+  output = tf.nn.softmax( y_conv, name="output" )
 
   with tf.name_scope('loss'):
     cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=y_,
@@ -150,16 +153,12 @@ def main(_):
     correct_prediction = tf.cast(correct_prediction, tf.float32)
   accuracy = tf.reduce_mean(correct_prediction)
 
-  graph_location = os.path.expanduser( './model' ) 
-  print('Saving graph to: %s' % graph_location)
-  train_writer = tf.summary.FileWriter(graph_location)
-  train_writer.add_graph(tf.get_default_graph())
-  
   saver = tf.train.Saver()
-  tf.train.export_meta_graph(filename=graph_location + '/model.meta')
 
   with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
+    train_writer = tf.summary.FileWriter( FLAGS.model_dir, sess.graph )
+
     for i in range(20000):
       batch = mnist.train.next_batch(50)
       if i % 100 == 0:
@@ -170,12 +169,20 @@ def main(_):
 
     print('test accuracy %g' % accuracy.eval(feed_dict={
         x: mnist.test.images, y_: mnist.test.labels, keep_prob: 1.0}))
-    save_path = saver.save(sess, graph_location + "/model")
-    
+
+    save_path = saver.save(sess, FLAGS.model_dir + "/model.ckpt")
+    tf.train.write_graph( sess.graph_def, FLAGS.model_dir, "model.pbtxt" )
+ 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
+
   parser.add_argument('--data_dir', type=str,
                       default='data',
                       help='Directory for storing input data')
+
+  parser.add_argument('--model_dir', type=str,
+                      default='model',
+                      help='Directory where the model files will be created')
+
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
